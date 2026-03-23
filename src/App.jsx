@@ -99,6 +99,17 @@ const LOG_TYPES = [
     badgeEn: "Waypoints",
   },
   {
+    id: "metrics",
+    icon: "📊",
+    available: true,
+    titleEs: "Métricas de uso",
+    titleEn: "Usage Metrics",
+    descEs: "Registro centralizado de búsquedas realizadas en la plataforma. Analiza el uso por tipo, cluster y período de tiempo.",
+    descEn: "Centralized record of searches performed on the platform. Analyze usage by type, cluster and time period.",
+    badgeEs: "Métricas",
+    badgeEn: "Metrics",
+  },
+  {
     id: "orders",
     icon: "📦",
     available: false,
@@ -2860,6 +2871,255 @@ function RouteLogsView({ routeLogs, routeLoading, error, cluster, setCluster,
   );
 }
 
+// ─── Usage Tracking ───────────────────────────────────────────────────────────
+function trackEvent(type, cluster, query, status, duration_ms) {
+  fetch("/api/track-event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, cluster, query: String(query || "").slice(0, 100), status, duration_ms }),
+  }).catch(() => {});
+}
+
+// ─── Metrics Components ────────────────────────────────────────────────────────
+const TYPE_META = {
+  "kibana":         { label: "Planificación", color: "#0052CC", bg: "#EBF2FF" },
+  "route-logs":     { label: "Rutas",         color: "#F27B42", bg: "#FEF0E8" },
+  "uber-logs":      { label: "Uber Direct",   color: "#1A7F4B", bg: "#EDFAF3" },
+  "waypoints-uber": { label: "Waypoints",     color: "#5E35B1", bg: "#EDE7F6" },
+  "claude":         { label: "AI",            color: "#0891B2", bg: "#E0F7FA" },
+};
+const STATUS_META = {
+  "success":   { label: "Éxito",     color: "#1A7F4B", bg: "#EDFAF3" },
+  "not_found": { label: "Sin datos", color: "#F27B42", bg: "#FEF0E8" },
+  "error":     { label: "Error",     color: "#D93025", bg: "#FFF0EF" },
+};
+
+function UsageBarChart({ data, labelKey, valueKey }) {
+  const W = 760, H = 160;
+  const PAD = { top: 14, right: 16, bottom: 34, left: 44 };
+  const innerW = W - PAD.left - PAD.right;
+  const innerH = H - PAD.top - PAD.bottom;
+  const maxVal = Math.max(...data.map((d) => d[valueKey]), 1);
+  const slotW  = innerW / data.length;
+  const barW   = Math.max(slotW - 3, 2);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+      <rect x={PAD.left} y={PAD.top} width={innerW} height={innerH} fill="#F5F7FA" rx={4} />
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <line key={f}
+          x1={PAD.left} y1={PAD.top + innerH * (1 - f)}
+          x2={PAD.left + innerW} y2={PAD.top + innerH * (1 - f)}
+          stroke="#E2E8F0" strokeWidth={1} />
+      ))}
+      {data.map((d, i) => {
+        const h = (d[valueKey] / maxVal) * innerH;
+        const x = PAD.left + i * slotW + (slotW - barW) / 2;
+        const y = PAD.top + innerH - h;
+        return <rect key={i} x={x} y={y} width={barW} height={Math.max(h, 1)} fill="#0052CC" rx={2} opacity={0.8} />;
+      })}
+      {data.map((d, i) => {
+        const show = data.length <= 12 ? true : data.length <= 24 ? i % 3 === 0 : i % 5 === 0;
+        if (!show) return null;
+        const x = PAD.left + i * slotW + slotW / 2;
+        return (
+          <text key={i} x={x} y={H - 4} textAnchor="middle"
+            fontSize={10} fill="#A0AEC0" fontFamily="Inter, system-ui, sans-serif">
+            {d[labelKey]}
+          </text>
+        );
+      })}
+      {[0, 0.5, 1].map((f) => (
+        <text key={f} x={PAD.left - 6} y={PAD.top + innerH * (1 - f) + 4}
+          textAnchor="end" fontSize={10} fill="#A0AEC0" fontFamily="Inter, system-ui, sans-serif">
+          {Math.round(maxVal * f)}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
+function MetricsView() {
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr]         = useState("");
+  const [chartMode, setChartMode] = useState("hour");
+
+  const fetchMetrics = async () => {
+    setLoading(true); setErr("");
+    try {
+      const resp = await fetch("/api/get-metrics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      setMetrics(data);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchMetrics(); }, []);
+
+  const hourData = (metrics?.by_hour ?? []).map((d) => ({
+    ...d,
+    label: String(d.hour).padStart(2, "0"),
+  }));
+  const dayData = (metrics?.by_day ?? []).map((d) => ({
+    ...d,
+    label: d.date.slice(5), // MM-DD
+  }));
+
+  const statCards = [
+    { label: "Total (30 días)", value: metrics?.totals?.all ?? 0,              color: "#132045" },
+    { label: "Planificación",   value: metrics?.totals?.["kibana"] ?? 0,        color: "#0052CC" },
+    { label: "Rutas",           value: metrics?.totals?.["route-logs"] ?? 0,    color: "#F27B42" },
+    { label: "Uber Direct",     value: metrics?.totals?.["uber-logs"] ?? 0,     color: "#1A7F4B" },
+    { label: "Waypoints",       value: metrics?.totals?.["waypoints-uber"] ?? 0,color: "#5E35B1" },
+  ];
+
+  return (
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 32px 60px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "#132045", margin: 0 }}>📊 Métricas de uso</h2>
+        <button onClick={fetchMetrics} disabled={loading}
+          style={{ background: "transparent", border: "1px solid #E2E8F0", borderRadius: 8,
+            padding: "7px 14px", fontSize: 12, fontWeight: 500, color: "#4A5568", cursor: "pointer" }}>
+          {loading ? "Cargando…" : "↻ Actualizar"}
+        </button>
+      </div>
+
+      {err && (
+        <div style={{ background: "#FFF0EF", border: "1px solid #D93025", borderLeft: "4px solid #D93025",
+          borderRadius: 10, padding: "12px 18px", color: "#D93025", fontSize: 13, marginBottom: 20 }}>
+          {err}
+        </div>
+      )}
+
+      {/* StatCards */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
+        {statCards.map((c) => (
+          <div key={c.label} style={{ background: "#fff", border: "1px solid #E2E8F0",
+            borderLeft: `3px solid ${c.color}`, borderRadius: 12, padding: "14px 20px",
+            minWidth: 130, flex: "1 1 130px",
+            boxShadow: "0 1px 3px rgba(19,32,69,0.08)" }}>
+            <div style={{ fontSize: 11, fontWeight: 500, color: "#A0AEC0",
+              textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              {c.label}
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: c.color, lineHeight: 1 }}>
+              {loading ? "—" : c.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Chart */}
+      <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12,
+        padding: "18px 20px", marginBottom: 24, boxShadow: "0 1px 3px rgba(19,32,69,0.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#132045" }}>
+            {chartMode === "hour" ? "Búsquedas por hora (hoy)" : "Búsquedas por día (últimos 30 días)"}
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {["hour", "day"].map((m) => (
+              <button key={m} onClick={() => setChartMode(m)}
+                style={{ padding: "5px 12px", fontSize: 12, fontWeight: chartMode === m ? 600 : 400,
+                  borderRadius: 6, border: "1px solid #E2E8F0", cursor: "pointer",
+                  background: chartMode === m ? "#0052CC" : "transparent",
+                  color: chartMode === m ? "#fff" : "#4A5568" }}>
+                {m === "hour" ? "Por hora" : "Por día"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {loading ? (
+          <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#A0AEC0", fontSize: 13 }}>Cargando…</div>
+        ) : (
+          <UsageBarChart
+            data={chartMode === "hour" ? hourData : dayData}
+            labelKey="label"
+            valueKey="count"
+          />
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12,
+        padding: "18px 20px", boxShadow: "0 1px 3px rgba(19,32,69,0.08)" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#132045", marginBottom: 14 }}>
+          Últimas 100 búsquedas
+        </div>
+        {loading ? (
+          <div style={{ color: "#A0AEC0", fontSize: 13, padding: "20px 0" }}>Cargando…</div>
+        ) : !metrics?.events?.length ? (
+          <div style={{ color: "#A0AEC0", fontSize: 13, padding: "20px 0" }}>
+            Sin registros aún. Las búsquedas aparecerán aquí.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #E2E8F0" }}>
+                  {["Timestamp", "Tipo", "Cluster", "Query", "Estado", "Duración"].map((h) => (
+                    <th key={h} style={{ textAlign: "left", padding: "8px 12px", fontSize: 11,
+                      fontWeight: 600, color: "#A0AEC0", textTransform: "uppercase",
+                      letterSpacing: "0.06em", whiteSpace: "nowrap" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {metrics.events.map((e, i) => {
+                  const tm = TYPE_META[e.type]   || { label: e.type,   color: "#4A5568", bg: "#F5F7FA" };
+                  const sm = STATUS_META[e.status] || { label: e.status, color: "#4A5568", bg: "#F5F7FA" };
+                  const ts = new Date(e.timestamp);
+                  return (
+                    <tr key={i} style={{ borderBottom: "1px solid #F0F4F8",
+                      background: i % 2 ? "#F5F7FA" : "#fff" }}>
+                      <td style={{ padding: "9px 12px", color: "#4A5568", whiteSpace: "nowrap",
+                        fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
+                        {ts.toLocaleDateString()} {ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+                      </td>
+                      <td style={{ padding: "9px 12px" }}>
+                        <span style={{ background: tm.bg, color: tm.color, border: `1px solid ${tm.color}22`,
+                          borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
+                          {tm.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: "9px 12px", color: "#4A5568" }}>{e.cluster ?? "—"}</td>
+                      <td style={{ padding: "9px 12px", color: "#0052CC", fontFamily: "'IBM Plex Mono', monospace",
+                        fontSize: 12, fontWeight: 600, maxWidth: 200, overflow: "hidden",
+                        textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {e.query ?? "—"}
+                      </td>
+                      <td style={{ padding: "9px 12px" }}>
+                        <span style={{ background: sm.bg, color: sm.color, border: `1px solid ${sm.color}22`,
+                          borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 600 }}>
+                          {sm.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: "9px 12px", color: "#4A5568", whiteSpace: "nowrap" }}>
+                        {e.duration_ms != null ? `${e.duration_ms} ms` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [logType, setLogType]     = useState(null);   // null = selector visible
@@ -2921,6 +3181,7 @@ export default function App() {
     if (!planId.trim()) { setError("Ingresa el plan_id"); return; }
     setError(""); setParsed(null); setAnalysis("");
     setKibanaLoading(true);
+    const t0 = Date.now();
     try {
       let fromIso, toIso;
       if (timeMode === "relative") {
@@ -2942,6 +3203,7 @@ export default function App() {
         }),
       });
       const data = await resp.json();
+      trackEvent("kibana", cluster, planId.trim(), data.error ? (resp.status === 404 ? "not_found" : "error") : "success", Date.now() - t0);
       if (data.error) throw new Error(data.error);
       setParsed(parseData(data.request, data.response));
     } catch (e) {
@@ -2955,6 +3217,7 @@ export default function App() {
     if (!orderCode) { setError("Ingresa el código de orden"); return; }
     setError(""); setUberLogs(null);
     setUberLoading(true);
+    const t0 = Date.now();
     try {
       let fromIso, toIso;
       if (timeMode === "relative") {
@@ -2971,6 +3234,7 @@ export default function App() {
         body: JSON.stringify({ order_code: orderCode, cluster, from: fromIso, to: toIso }),
       });
       const data = await resp.json();
+      trackEvent("uber-logs", cluster, orderCode, data.error ? (resp.status === 404 ? "not_found" : "error") : "success", Date.now() - t0);
       if (data.error) throw new Error(data.error);
       setUberLogs(parseUberHits(data.hits));
     } catch (e) {
@@ -2984,6 +3248,7 @@ export default function App() {
     if (!orderCode) { setError("Ingresa el código de orden"); return; }
     setError(""); setWaypointLogs(null);
     setWaypointLoading(true);
+    const t0 = Date.now();
     try {
       let fromIso, toIso;
       if (timeMode === "relative") {
@@ -3000,6 +3265,7 @@ export default function App() {
         body: JSON.stringify({ order_code: orderCode, cluster, from: fromIso, to: toIso }),
       });
       const data = await resp.json();
+      trackEvent("waypoints-uber", cluster, orderCode, data.error ? (resp.status === 404 ? "not_found" : "error") : "success", Date.now() - t0);
       if (data.error) throw new Error(data.error);
       setWaypointLogs(parseWaypointHits(data.hits));
     } catch (e) {
@@ -3013,6 +3279,7 @@ export default function App() {
     if (!routeId) { setError("Ingresa el Route ID"); return; }
     setError(""); setRouteLogs(null);
     setRouteLoading(true);
+    const t0 = Date.now();
     try {
       let fromIso, toIso;
       if (timeMode === "relative") {
@@ -3029,6 +3296,7 @@ export default function App() {
         body: JSON.stringify({ route_id: routeId, cluster, from: fromIso, to: toIso }),
       });
       const data = await resp.json();
+      trackEvent("route-logs", cluster, routeId, data.error ? (resp.status === 404 ? "not_found" : "error") : "success", Date.now() - t0);
       if (data.error) throw new Error(data.error);
       setRouteLogs(parseRouteHits(data.hits));
     } catch (e) {
@@ -3576,6 +3844,9 @@ export default function App() {
           onSearch={handleUberSearch}
         />
       )}
+
+      {/* Flujo: Métricas */}
+      {logType === "metrics" && <MetricsView />}
 
       {/* Flujo: Rutas */}
       {logType === "routes" && (
