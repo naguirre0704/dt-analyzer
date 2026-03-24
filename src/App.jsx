@@ -1622,7 +1622,7 @@ function MobileDataChart({ events, t, onPointClick }) {
       return val != null && !isNaN(val) ? { ts: new Date(e.timestamp), val, eventId: e.id } : null;
     }).filter(Boolean);
     return { field, color: CHART_COLORS[fi % CHART_COLORS.length], points };
-  }).filter((s) => s.points.length > 0 && new Set(s.points.map((p) => p.val)).size > 1);
+  }).filter((s) => s.points.length > 0);
 
   const buttonStyle = {
     ...btnGhost,
