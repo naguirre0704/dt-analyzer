@@ -1247,7 +1247,16 @@ function LoadingState() {
     return () => clearInterval(t);
   }, []);
   return (
-    <div style={{ textAlign: "center", padding: "56px 0" }}>
+    <div style={{
+      background: C.card,
+      border: `1px solid ${C.border}`,
+      borderRadius: 12,
+      padding: "56px 40px",
+      boxShadow: C.shadow,
+      maxWidth: 480,
+      margin: "24px auto",
+      textAlign: "center",
+    }}>
       <style>{`
         @keyframes ls-spin { to { transform: rotate(360deg); } }
         @keyframes ls-slide { 0%{left:-40%;width:40%} 60%{left:60%;width:60%} 100%{left:110%;width:10%} }
