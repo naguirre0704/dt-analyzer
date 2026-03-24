@@ -1602,10 +1602,12 @@ function MobileDataChart({ events, t, onPointClick }) {
     .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
   // Detect numeric fields across all mobile events
+  const EXCLUDED_FIELDS = new Set(["route_id"]);
   const numericFields = (() => {
     const fieldSet = new Set();
     mobileEvents.forEach((e) => {
       Object.entries(e.parameters ?? {}).forEach(([k, v]) => {
+        if (EXCLUDED_FIELDS.has(k)) return;
         if (typeof v === "boolean" || typeof v === "number" || (typeof v === "string" && v !== "" && !isNaN(Number(v)))) {
           fieldSet.add(k);
         }
