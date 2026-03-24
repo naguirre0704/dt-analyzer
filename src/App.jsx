@@ -1233,7 +1233,7 @@ function LogTypeSelector({ lang, t, onSelect }) {
 }
 
 // ─── Field Chart (one chart per numeric field) ────────────────────────────────
-function FieldChart({ field, color, points, onPointClick }) {
+function FieldChart({ field, color, points, onPointClick, stepped = false }) {
   const [hoverInfo, setHoverInfo] = useState(null);
   const svgRef = useRef(null);
 
@@ -1260,6 +1260,11 @@ function FieldChart({ field, color, points, onPointClick }) {
     if (pts.length === 0) return "";
     if (pts.length === 1) return `M ${xScale(pts[0].ts)} ${yScale(pts[0].val)}`;
     const m = pts.map((p) => ({ x: xScale(p.ts), y: yScale(p.val) }));
+    if (stepped) {
+      let d = `M ${m[0].x} ${m[0].y}`;
+      for (let i = 1; i < m.length; i++) d += ` H ${m[i].x} V ${m[i].y}`;
+      return d;
+    }
     let d = `M ${m[0].x} ${m[0].y}`;
     for (let i = 1; i < m.length; i++) {
       const cpx = (m[i - 1].x + m[i].x) / 2;
@@ -1271,6 +1276,12 @@ function FieldChart({ field, color, points, onPointClick }) {
   const buildArea = (pts) => {
     if (pts.length < 2) return "";
     const m = pts.map((p) => ({ x: xScale(p.ts), y: yScale(p.val) }));
+    if (stepped) {
+      let d = `M ${m[0].x} ${innerH} L ${m[0].x} ${m[0].y}`;
+      for (let i = 1; i < m.length; i++) d += ` H ${m[i].x} V ${m[i].y}`;
+      d += ` V ${innerH} Z`;
+      return d;
+    }
     let d = `M ${m[0].x} ${innerH} L ${m[0].x} ${m[0].y}`;
     for (let i = 1; i < m.length; i++) {
       const cpx = (m[i - 1].x + m[i].x) / 2;
@@ -1603,6 +1614,7 @@ function MobileDataChart({ events, t, onPointClick }) {
 
   // Detect numeric fields across all mobile events
   const EXCLUDED_FIELDS = new Set(["route_id"]);
+  const STEPPED_FIELDS  = new Set(["gps", "disk_remaining"]);
   const numericFields = (() => {
     const fieldSet = new Set();
     mobileEvents.forEach((e) => {
@@ -1623,7 +1635,7 @@ function MobileDataChart({ events, t, onPointClick }) {
       const val = raw != null ? (typeof raw === "boolean" ? (raw ? 1 : 0) : Number(raw)) : null;
       return val != null && !isNaN(val) ? { ts: new Date(e.timestamp), val, eventId: e.id } : null;
     }).filter(Boolean);
-    return { field, color: CHART_COLORS[fi % CHART_COLORS.length], points };
+    return { field, color: CHART_COLORS[fi % CHART_COLORS.length], points, stepped: STEPPED_FIELDS.has(field) };
   }).filter((s) => s.points.length > 0);
 
   const buttonStyle = {
@@ -1666,7 +1678,7 @@ function MobileDataChart({ events, t, onPointClick }) {
                 {onPointClick ? " · hover para valor exacto · click para ir al log" : " · hover para valor exacto"}
               </div>
               {series.map((s) => (
-                <FieldChart key={s.field} field={s.field} color={s.color} points={s.points} onPointClick={onPointClick} />
+                <FieldChart key={s.field} field={s.field} color={s.color} points={s.points} onPointClick={onPointClick} stepped={s.stepped} />
               ))}
             </>
           )}
