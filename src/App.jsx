@@ -1606,7 +1606,7 @@ function MobileDataChart({ events, t, onPointClick }) {
     const fieldSet = new Set();
     mobileEvents.forEach((e) => {
       Object.entries(e.parameters ?? {}).forEach(([k, v]) => {
-        if (typeof v === "number" || (typeof v === "string" && v !== "" && !isNaN(Number(v)))) {
+        if (typeof v === "boolean" || typeof v === "number" || (typeof v === "string" && v !== "" && !isNaN(Number(v)))) {
           fieldSet.add(k);
         }
       });
@@ -1618,7 +1618,7 @@ function MobileDataChart({ events, t, onPointClick }) {
   const series = numericFields.map((field, fi) => {
     const points = mobileEvents.map((e) => {
       const raw = (e.parameters ?? {})[field];
-      const val = raw != null ? Number(raw) : null;
+      const val = raw != null ? (typeof raw === "boolean" ? (raw ? 1 : 0) : Number(raw)) : null;
       return val != null && !isNaN(val) ? { ts: new Date(e.timestamp), val, eventId: e.id } : null;
     }).filter(Boolean);
     return { field, color: CHART_COLORS[fi % CHART_COLORS.length], points };
