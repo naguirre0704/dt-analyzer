@@ -3409,7 +3409,7 @@ export default function App() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <img
-            src="/logo.png" alt="DispatchTrack"
+            src="/White logo.svg" alt="DispatchTrack"
             onClick={() => setLogType(null)}
             style={{ height: 28, width: "auto", display: "block", cursor: "pointer" }}
           />
