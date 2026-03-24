@@ -1232,6 +1232,49 @@ function LogTypeSelector({ lang, t, onSelect }) {
   );
 }
 
+// ─── Loading State ────────────────────────────────────────────────────────────
+const LOADING_MESSAGES = [
+  "Conectando con Kibana...",
+  "Recuperando logs del clúster...",
+  "Procesando los registros...",
+  "Preparando la visualización...",
+];
+
+function LoadingState() {
+  const [msgIdx, setMsgIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setMsgIdx((i) => (i + 1) % LOADING_MESSAGES.length), 2000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ textAlign: "center", padding: "56px 0" }}>
+      <style>{`
+        @keyframes ls-spin { to { transform: rotate(360deg); } }
+        @keyframes ls-slide { 0%{left:-40%;width:40%} 60%{left:60%;width:60%} 100%{left:110%;width:10%} }
+        @keyframes ls-fade { 0%,100%{opacity:0;transform:translateY(4px)} 15%,85%{opacity:1;transform:translateY(0)} }
+      `}</style>
+      <div style={{
+        width: 36, height: 36, borderRadius: "50%",
+        border: `3px solid ${C.borderLight}`, borderTopColor: C.blue,
+        animation: "ls-spin 0.8s linear infinite",
+        margin: "0 auto 20px",
+      }} />
+      <div key={msgIdx} style={{
+        fontSize: 14, fontWeight: 500, color: C.text, fontFamily: C.sans,
+        marginBottom: 20, animation: "ls-fade 2s ease",
+      }}>
+        {LOADING_MESSAGES[msgIdx]}
+      </div>
+      <div style={{ width: 220, height: 3, background: C.borderLight, borderRadius: 99, margin: "0 auto", position: "relative", overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", height: "100%", borderRadius: 99, background: C.blue,
+          animation: "ls-slide 1.5s ease-in-out infinite",
+        }} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Field Chart (one chart per numeric field) ────────────────────────────────
 function FieldChart({ field, color, points, onPointClick, stepped = false }) {
   const [hoverInfo, setHoverInfo] = useState(null);
@@ -2024,6 +2067,8 @@ function UberLogsView({ uberLogs, uberLoading, error, cluster, setCluster,
         )}
       </div>
 
+      {uberLoading && <LoadingState />}
+
       {/* Results */}
       {uberLogs && info && (
         <>
@@ -2499,12 +2544,7 @@ function WaypointsUberView({ waypointLogs, waypointLoading, error, cluster, setC
       </div>
 
       {/* Loading */}
-      {waypointLoading && (
-        <div style={{ textAlign: "center", padding: "48px 0", color: C.textSec }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-          <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>Buscando waypoints…</div>
-        </div>
-      )}
+      {waypointLoading && <LoadingState />}
 
       {/* Results */}
       {waypointLogs && info && (
@@ -2796,6 +2836,8 @@ function RouteLogsView({ routeLogs, routeLoading, error, cluster, setCluster,
           }}>{error}</div>
         )}
       </div>
+
+      {routeLoading && <LoadingState />}
 
       {/* Resultados */}
       {routeLogs && summary && (
@@ -3610,6 +3652,8 @@ export default function App() {
             </button>}
           </div>
         )}
+
+        {kibanaLoading && <LoadingState />}
 
         {/* Paso 2: Resultados */}
         {parsed && (() => {
